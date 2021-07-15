@@ -18,7 +18,14 @@ scale = 1
 offset = 100
 nsample_to_show = 1000
 
+
 ##
+
+function update_time_ticks(axis, value)
+    # xtick_pos = 1:100:nsample_to_show_obs[]
+    xtick_pos = LinRange(50,nsample_to_show_obs[]-50, 10)
+    axis.xticks = (xtick_pos, ["$((value + x)/srate)s" for x in xtick_pos])
+end
 
 ##
 
@@ -30,6 +37,26 @@ axis = fig[1, 1] = Axis(fig, title = "EEG")
 axis.yzoomlock = true
 axis.xzoomlock = true
 
+nsample_to_show_obs = Node(nsample_to_show)
+
+on(events(fig).keyboardbutton , priority = 0) do event
+    if event.action in (Keyboard.press, Keyboard.repeat)
+        if event.key == Keyboard.a
+            nsample_to_show_obs[] += 100
+            xlims!(0,nsample_to_show_obs[])
+            update_time_ticks(axis, slider.value[])
+        end
+
+        if event.key == Keyboard.s
+            nsample_to_show_obs[] -= 100
+            xlims!(0,nsample_to_show_obs[])
+            update_time_ticks(axis, slider.value[])
+        end
+    end
+    println(nsample_to_show_obs[])
+    return Consume(false)
+end
+
 
 # Set up slider
 slider = Slider(fig[2, 1], range = 1:1:nsamples-nsample_to_show, startvalue = 1)
@@ -38,7 +65,8 @@ slider_time = slider.value
 
 # Plot EEG
 for chan in 1:nchan
-    data_chunk = @lift(data[chan,Int($slider_time):Int($slider_time)+nsample_to_show])
+    range = @lift((Int($slider_time),Int($slider_time)+$nsample_to_show_obs))
+    data_chunk = @lift(data[chan,$range[1]:$range[2]])
     chunk_mean = @lift(mean($data_chunk))
     data_chunk_plot = @lift($data_chunk .+ (-$chunk_mean + chan*offset) .* scale)
     
@@ -47,22 +75,18 @@ end
 
 # Set ticks
 axis.yticks = (offset:offset:(nchan)*offset, chanlabels)
-xtick_pos = 1:100:nsample_to_show
-axis.xticks = (xtick_pos, ["$((x)/srate)s" for x in xtick_pos])
+update_time_ticks(axis, 0)
 # dynamic time tick update
 on(slider.value) do value
-    xtick_pos = 1:100:nsample_to_show
-    axis.xticks = (xtick_pos, ["$((value + x)/srate)s" for x in xtick_pos])
+    update_time_ticks(axis, value)
 end
 
-xlims!(0,nsample_to_show)
+
+xlims!(0,nsample_to_show_obs[])
 
 fig
 ##
 
-# register_interaction!(axis, :my_interaction) do event::ScrollEvent, axis
-#     nsample_to_show_obs[] = floor(Int, axis.limits.val.widths[1])
-#     println(axis.limits.val.origin[1])
-# end
 
 # xlims!(axis, [0,500])
+

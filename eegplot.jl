@@ -1,4 +1,4 @@
-using Base: func_for_method_checked, structdiff
+using Base: func_for_method_checked, structdiff, Const
 using GLMakie
 using Statistics
 include("load_eeglab.jl")
@@ -43,6 +43,64 @@ function draw_events(event_array)
     append!(event_array,[vlines!(axis, event.latency/srate, color = :red) for event in eachrow(vis_events)])
 end
 
+function is_mouseinside(scene)
+    return Vec(scene.events.mouseposition[]) in pixelarea(scene)[]
+    # Check that mouse is not inside any other screen
+    # for child in scene.children
+    #     is_mouseinside(child) && return false
+    # end
+end
+
+function select_rectangle(scene; blocking = false, priority = 2, strokewidth = 3.0, kwargs...)
+    key = Mouse.left
+    waspressed = Node(false)
+    rect = Node(FRect(0, 0, 1, 1)) # plotted rectangle
+    rect_ret = Node(FRect(0, 0, 1, 1)) # returned rectangle
+
+    # Create an initially hidden rectangle
+    plotted_rect = poly!(
+        scene, rect, raw = true, visible = false, color = RGBAf0(0, 0, 0, 0), strokecolor = RGBAf0(0.1, 0.1, 0.8, 0.5), strokewidth = strokewidth, kwargs...,
+    )
+
+    on(events(scene).mousebutton, priority=priority) do event
+        if event.button == key
+            if event.action == Mouse.press && is_mouseinside(scene)
+                mp = mouseposition(scene)
+                waspressed[] = true
+                plotted_rect[:visible] = true # start displaying
+                rect[] = FRect(mp, 0.0, 0.0)
+                return Consume(blocking)
+            end
+        end
+        if !(event.button == key && event.action == Mouse.press)
+            if waspressed[] # User has selected the rectangle
+                waspressed[] = false
+                r = absrect(rect[])
+                w, h = widths(r)
+                if w > 0.0 && h > 0.0 # Ensure that the rectangle has non0 size.
+                    rect_ret[] = r
+                end
+            end
+            # always hide if not the right key is pressed
+            plotted_rect[:visible] = false # make the plotted rectangle invisible
+            return Consume(blocking)
+        end
+
+        return Consume(false)
+    end
+    on(events(scene).mouseposition, priority=priority) do event
+        if waspressed[]
+            mp = mouseposition(scene)
+            mini = minimum(rect[])
+            rect[] = FRect(mini, mp - mini)
+            return Consume(blocking)
+        end
+        return Consume(false)
+    end
+
+    return rect_ret
+end
+
 ##
 
 # Set up figure
@@ -54,7 +112,7 @@ axis.yzoomlock = true
 axis.xzoomlock = true
 axis.xpanlock = true
 axis.ypanlock = true
-axis.xrectzoom = true
+axis.xrectzoom = false
 axis.yrectzoom = false
 
 # Set up slider
@@ -86,7 +144,7 @@ end
 # Event plotting
 event_array = []
 on(range) do value
-    draw_events(event_array)
+    # draw_events(event_array)
 end
 
 # Scrolling zoom
@@ -96,6 +154,45 @@ on(events(fig).scroll, priority = 100) do scroll
     update_time_ticks(axis, slider.value[])
 end
 
+# Color channel on click
+on(events(fig).mousebutton) do event
+    if event.action == Mouse.press
+        mouse_pos = events(fig).mouseposition[]
+        mark_plot = Makie.pick(axis.scene, mouse_pos, 500)[1]
+        if typeof(mark_plot) == Lines{Tuple{Vector{Point{2, Float32}}}}
+            if mark_plot.attributes.color[] == :red
+                mark_plot.attributes.color = :grey0
+            else
+                mark_plot.attributes.color = :red
+            end
+        end
+    end
+    return Consume(false)
+end
+
+
+# Mark time windows
+
+start_time = Node(0)
+end_time = Node(1)
+time_range = @lift($start_time+1:$end_time)
+time_diff = @lift($end_time - $start_time)
+lower_band = @lift(repeat([0], $time_diff))
+upper_band = @lift(repeat([1000], $time_diff))
+band!(time_range, lower_band, upper_band, color = :red)
+
+on(events(fig).keyboardbutton) do event
+    if event.action == Keyboard.press && event.key == Keyboard.left_shift
+        start_time[] = events(fig).mouseposition[][1]
+    end
+    
+    if event.action == Keyboard.release && event.key == Keyboard.left_shift
+        end_time[] = events(fig).mouseposition[][1]
+        println([start_time[], end_time[]])
+    end
+end
+
+rect = select_rectangle(axis.scene)
 
 # No left/right margin
 tightlimits!(axis, Left(), Right())
@@ -112,3 +209,4 @@ fig
 #         delete!(axis, axis.scene.plots[i])
 #     end
 # end
+

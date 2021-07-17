@@ -6,7 +6,7 @@ function import_eeglab(filename)
 
     file = MAT.matopen(filename)
     # open file
-    EEG = read(file, "EEG")
+    EEG = read(file) #, "EEG")
 
 
     function parse_struct(s::Dict)

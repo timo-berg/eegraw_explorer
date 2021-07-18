@@ -2,7 +2,7 @@ using Base: func_for_method_checked, structdiff, Const
 using GLMakie
 using Statistics
 include("load_eeglab.jl")
-
+##
 
 data,srate,evts_df,chanlocs_df,EEG = import_eeglab("sub35_preprocessed.set")
 
@@ -51,11 +51,21 @@ function is_mouseinside(scene)
     # end
 end
 
+function absrect(rectangle)
+    origin = rectangle.origin
+    widths = rectangle.widths
+    opposite_corner = origin + widths
+    new_origin = min.(origin, opposite_corner)
+    new_widths = abs.(widths)
+    new_rectangle = FRect(new_origin[1], new_origin[2], new_widths[1], new_widths[2])
+end
+
 function select_rectangle(scene; blocking = false, priority = 2, strokewidth = 3.0, kwargs...)
     key = Mouse.left
     waspressed = Node(false)
     rect = Node(FRect(0, 0, 1, 1)) # plotted rectangle
     rect_ret = Node(FRect(0, 0, 1, 1)) # returned rectangle
+    y_lim = @lift($(axis.finallimits).origin)
 
     # Create an initially hidden rectangle
     plotted_rect = poly!(
@@ -193,6 +203,10 @@ on(events(fig).keyboardbutton) do event
 end
 
 rect = select_rectangle(axis.scene)
+
+on(rect) do value
+    println(value)
+end
 
 # No left/right margin
 tightlimits!(axis, Left(), Right())

@@ -1,6 +1,7 @@
 using Base: func_for_method_checked, structdiff, Const
 using GLMakie
 using Statistics
+using Colors
 include("load_eeglab.jl")
 ##
 
@@ -29,7 +30,6 @@ function update_time_ticks(axis, value)
     axis.xticks = (xtick_pos, ["$(x)s" for x in xtick_pos_label])
 end
 
-
 function draw_events(event_array)
     # Delete old events
     if !isempty(event_array)
@@ -41,6 +41,10 @@ function draw_events(event_array)
     # Draw new events and store them in event array
     vis_events = evts_df[ lower_bound[] .< evts_df[:,:latency] .< upper_bound[],:]
     append!(event_array,[vlines!(axis, event.latency/srate, color = :red) for event in eachrow(vis_events)])
+end
+
+function draw_reject_region(rect)
+    poly!(axis, rect, raw = true, visible = true, color = RGBAf0(1.0, 0.08, 0.58, 0.3), strokewidth = 0)
 end
 
 function is_mouseinside(scene)
@@ -65,11 +69,11 @@ function select_rectangle(scene; blocking = false, priority = 2, strokewidth = 3
     waspressed = Node(false)
     rect = Node(FRect(0, 0, 1, 1)) # plotted rectangle
     rect_ret = Node(FRect(0, 0, 1, 1)) # returned rectangle
-    y_lim = @lift($(axis.finallimits).origin)
-
+    y_lim = @lift([$(axis.finallimits).origin[2], $(axis.finallimits).widths[2]])
+    y_height = @lift(abs($y_lim[1]-$y_lim[2]))
     # Create an initially hidden rectangle
     plotted_rect = poly!(
-        scene, rect, raw = true, visible = false, color = RGBAf0(0, 0, 0, 0), strokecolor = RGBAf0(0.1, 0.1, 0.8, 0.5), strokewidth = strokewidth, kwargs...,
+        scene, rect, raw = true, visible = false, color = RGBAf0(1.0, 0.08, 0.58, 0.3), strokewidth = 0, transparency = false, kwargs...,
     )
 
     on(events(scene).mousebutton, priority=priority) do event
@@ -78,7 +82,7 @@ function select_rectangle(scene; blocking = false, priority = 2, strokewidth = 3
                 mp = mouseposition(scene)
                 waspressed[] = true
                 plotted_rect[:visible] = true # start displaying
-                rect[] = FRect(mp, 0.0, 0.0)
+                rect[] = FRect(mp[1], y_lim[][1], 0.0, y_height[])
                 return Consume(blocking)
             end
         end
@@ -102,7 +106,7 @@ function select_rectangle(scene; blocking = false, priority = 2, strokewidth = 3
         if waspressed[]
             mp = mouseposition(scene)
             mini = minimum(rect[])
-            rect[] = FRect(mini, mp - mini)
+            rect[] = FRect(mini[1], y_lim[][1], mp[1] - mini[1], y_height[])
             return Consume(blocking)
         end
         return Consume(false)
@@ -205,7 +209,8 @@ end
 rect = select_rectangle(axis.scene)
 
 on(rect) do value
-    println(value)
+    draw_reject_region(value)
+    # poly!([221.92555, -644.2988, 183.09859, 14818.873])
 end
 
 # No left/right margin

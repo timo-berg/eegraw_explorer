@@ -30,14 +30,29 @@ function update_time_ticks(axis, value)
     axis.xticks = (xtick_pos, ["$(x)s" for x in xtick_pos_label])
 end
 
-function draw_events(event_plots)
+function redraw_events(plots)
     # Draw new events and store them in event array
     vis_events = lower_bound[] .< evts_df[:,:latency] .< upper_bound[]
-    for event in event_plots[vis_events]
+    for event in plots[vis_events]
         event.visible = true
     end
-    for event in event_plots[.!vis_events]
+    for event in plots[.!vis_events]
         event.visible = false
+    end
+end
+
+function redraw_reject_regions(limits, plots)
+    limits_df = DataFrame( lower=[], upper=[])
+    for region in limits
+        push!(limits_df, region)
+    end
+    vis_regions = ((lower_bound[] .< limits_df[:,:lower] .< upper_bound[])
+                .| (lower_bound[] .< limits_df[:,:upper] .< upper_bound[]))
+    for region in plots[vis_regions]
+        region.visible = true
+    end
+    for region in plots[.!vis_regions]
+        region.visible = false
     end
 end
 
@@ -151,7 +166,8 @@ event_plots = map(evts_df.latency) do latency
     vlines!(axis, plot_pos, visible = false)
 end
 on(range) do value
-    draw_events(event_plots)
+    redraw_events(event_plots)
+    redraw_reject_regions(reject_limits, reject_plots)
 end
 
 # Set ticks
@@ -210,9 +226,19 @@ on(events(fig).keyboardbutton) do event
 end
 
 rect = select_rectangle(axis.scene)
-
-on(rect) do value
-    draw_reject_region(value)
+reject_limits = Array{Float32}[]
+reject_plots = []
+on(rect) do new_rect
+    start_idx = deepcopy(new_rect.origin[1])
+    end_idx = deepcopy(start_idx + new_rect.widths[1])
+    append!(reject_limits, [[start_idx, end_idx]])
+    
+    plot_start = @lift(max(0, start_idx-$lower_bound))
+    plot_end = @lift(min(end_idx - $lower_bound, $upper_bound))
+    y_lim = @lift([$(axis.finallimits).origin[2], $(axis.finallimits).widths[2]])
+    y_height = @lift(abs($y_lim[1]-$y_lim[2]))
+    draw_rect = @lift(FRect($plot_start, $y_lim[1], abs($plot_end-$plot_start), $y_height))
+    append!(reject_plots, [draw_reject_region(draw_rect)])
 end
 
 # No left/right margin
@@ -223,11 +249,12 @@ set_window_config!(focus_on_show = true)
 fig
 ##
 
-
-
-# for i in 1:size(axis.scene.plots)[1]
-#     if typeof(axis.scene.plots[i]) == LineSegments{Tuple{Base.ReinterpretArray{Point{2, Float32}, 1, Tuple{Point{2, Float32}, Point{2, Float32}}, Vector{Tuple{Point{2, Float32}, Point{2, Float32}}}, false}}}
-#         delete!(axis, axis.scene.plots[i])
-#     end
-# end
-
+# TODO
+# - reject regions on shift-hold
+# - delete reject region on right click
+# - prevent creation of overlapping reject vis_regions
+# - add event tags http://makie.juliaplots.org/stable/plotting_functions/text.html#text
+# - add scroll via arrow keys
+#
+# OPTIONAL
+# - add channel scroll

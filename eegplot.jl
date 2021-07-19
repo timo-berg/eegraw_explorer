@@ -30,17 +30,15 @@ function update_time_ticks(axis, value)
     axis.xticks = (xtick_pos, ["$(x)s" for x in xtick_pos_label])
 end
 
-function draw_events(event_array)
-    # Delete old events
-    if !isempty(event_array)
-        for i in 1:size(event_array)[1]
-            delete!(axis, event_array[i])
-        end
-    end
-
+function draw_events(event_plots)
     # Draw new events and store them in event array
-    vis_events = evts_df[ lower_bound[] .< evts_df[:,:latency] .< upper_bound[],:]
-    append!(event_array,[vlines!(axis, event.latency/srate, color = :red) for event in eachrow(vis_events)])
+    vis_events = lower_bound[] .< evts_df[:,:latency] .< upper_bound[]
+    for event in event_plots[vis_events]
+        event.visible = true
+    end
+    for event in event_plots[.!vis_events]
+        event.visible = false
+    end
 end
 
 function draw_reject_region(rect)
@@ -147,6 +145,15 @@ for chan in 1:nchan
     lines!(axis, data_chunk_plot, color = :grey0)
 end
 
+# Plot events
+event_plots = map(evts_df.latency) do latency
+    plot_pos = @lift(latency-$lower_bound)
+    vlines!(axis, plot_pos, visible = false)
+end
+on(range) do value
+    draw_events(event_plots)
+end
+
 # Set ticks
 axis.yticks = (offset:offset:(nchan)*offset, chanlabels)
 update_time_ticks(axis, 0)
@@ -156,10 +163,6 @@ on(slider.value) do value
 end
 
 # Event plotting
-event_array = []
-on(range) do value
-    # draw_events(event_array)
-end
 
 # Scrolling zoom
 on(events(fig).scroll, priority = 100) do scroll
@@ -210,7 +213,6 @@ rect = select_rectangle(axis.scene)
 
 on(rect) do value
     draw_reject_region(value)
-    # poly!([221.92555, -644.2988, 183.09859, 14818.873])
 end
 
 # No left/right margin

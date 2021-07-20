@@ -78,7 +78,7 @@ function absrect(rectangle)
 end
 
 function select_rectangle(scene; blocking = false, priority = 2, strokewidth = 3.0, kwargs...)
-    key = Mouse.left
+    key = Keyboard.left_shift
     waspressed = Node(false)
     rect = Node(FRect(0, 0, 1, 1)) # plotted rectangle
     rect_ret = Node(FRect(0, 0, 1, 1)) # returned rectangle
@@ -89,9 +89,9 @@ function select_rectangle(scene; blocking = false, priority = 2, strokewidth = 3
         scene, rect, raw = true, visible = false, color = RGBAf0(1.0, 0.08, 0.58, 0.3), strokewidth = 0, transparency = false, kwargs...,
     )
 
-    on(events(scene).mousebutton, priority=priority) do event
-        if event.button == key
-            if event.action == Mouse.press && is_mouseinside(scene)
+    on(events(scene).keyboardbutton , priority=priority) do event
+        if event.key == key
+            if event.action == Keyboard.press && is_mouseinside(scene)
                 mp = mouseposition(scene)
                 waspressed[] = true
                 plotted_rect[:visible] = true # start displaying
@@ -99,7 +99,7 @@ function select_rectangle(scene; blocking = false, priority = 2, strokewidth = 3
                 return Consume(blocking)
             end
         end
-        if !(event.button == key && event.action == Mouse.press)
+        if !(event.key == key && event.action == Keyboard.repeat)
             if waspressed[] # User has selected the rectangle
                 waspressed[] = false
                 r = absrect(rect[])
@@ -178,8 +178,6 @@ on(slider.value) do value
     update_time_ticks(axis, value)
 end
 
-# Event plotting
-
 # Scrolling zoom
 on(events(fig).scroll, priority = 100) do scroll
     nsample_to_show_obs[] = clamp(nsample_to_show_obs[]+scroll[2]*30, 150, nsamples)
@@ -205,31 +203,11 @@ end
 
 
 # Mark time windows
-
-start_time = Node(0)
-end_time = Node(1)
-time_range = @lift($start_time+1:$end_time)
-time_diff = @lift($end_time - $start_time)
-lower_band = @lift(repeat([0], $time_diff))
-upper_band = @lift(repeat([1000], $time_diff))
-band!(time_range, lower_band, upper_band, color = :red)
-
-on(events(fig).keyboardbutton) do event
-    if event.action == Keyboard.press && event.key == Keyboard.left_shift
-        start_time[] = events(fig).mouseposition[][1]
-    end
-    
-    if event.action == Keyboard.release && event.key == Keyboard.left_shift
-        end_time[] = events(fig).mouseposition[][1]
-        println([start_time[], end_time[]])
-    end
-end
-
 rect = select_rectangle(axis.scene)
 reject_limits = Array{Float32}[]
 reject_plots = []
 on(rect) do new_rect
-    start_idx = deepcopy(new_rect.origin[1])
+    start_idx = deepcopy(new_rect.origin[1]+max(1, slider_time[]-nsample_to_show_obs[]/2))
     end_idx = deepcopy(start_idx + new_rect.widths[1])
     append!(reject_limits, [[start_idx, end_idx]])
     
@@ -239,18 +217,19 @@ on(rect) do new_rect
     y_height = @lift(abs($y_lim[1]-$y_lim[2]))
     draw_rect = @lift(FRect($plot_start, $y_lim[1], abs($plot_end-$plot_start), $y_height))
     append!(reject_plots, [draw_reject_region(draw_rect)])
+    println(plot_start[])
+    println(draw_rect[])
 end
 
 # No left/right margin
 tightlimits!(axis, Left(), Right())
-
+ylims!(-offset*scale, (1+nchan)*offset*scale)
 
 set_window_config!(focus_on_show = true)
 fig
 ##
 
 # TODO
-# - reject regions on shift-hold
 # - delete reject region on right click
 # - prevent creation of overlapping reject vis_regions
 # - add event tags http://makie.juliaplots.org/stable/plotting_functions/text.html#text

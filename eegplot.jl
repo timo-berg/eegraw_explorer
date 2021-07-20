@@ -30,14 +30,16 @@ function update_time_ticks(axis, value)
     axis.xticks = (xtick_pos, ["$(x)s" for x in xtick_pos_label])
 end
 
-function redraw_events(plots)
+function redraw_events(lines, tags)
     # Draw new events and store them in event array
     vis_events = lower_bound[] .< evts_df[:,:latency] .< upper_bound[]
-    for event in plots[vis_events]
+    for (event_idx, event) in enumerate(lines[vis_events])
         event.visible = true
+        tags[event_idx].visible = true
     end
-    for event in plots[.!vis_events]
+    for (event_idx, event) in enumerate(lines[.!vis_events])
         event.visible = false
+        tags[event_idx].visible = false
     end
 end
 
@@ -162,12 +164,16 @@ for chan in 1:nchan
 end
 
 # Plot events
-event_plots = map(evts_df.latency) do latency
-    plot_pos = @lift(latency-$lower_bound)
+event_plots = map(eachrow(evts_df)) do event
+    plot_pos = @lift(event.latency-$lower_bound)
     vlines!(axis, plot_pos, visible = false)
 end
+event_tags = map(eachrow(evts_df)) do event
+    plot_pos = @lift(event.latency-$lower_bound)
+    text!(axis.scene, event.type, position=(plot_pos,(nchan+5)*offset*scale), align=(:center, :center), visible=false)
+end
 on(range) do value
-    redraw_events(event_plots)
+    redraw_events(event_plots, event_tags)
     redraw_reject_regions(reject_limits, reject_plots)
 end
 
@@ -256,7 +262,7 @@ end
 
 # No left/right margin
 tightlimits!(axis, Left(), Right())
-ylims!(-offset*scale, (1+nchan)*offset*scale)
+ylims!(-offset*scale, (10+nchan)*offset*scale)
 
 set_window_config!(focus_on_show = true)
 fig
@@ -264,6 +270,9 @@ fig
 
 # TODO
 # - add event tags http://makie.juliaplots.org/stable/plotting_functions/text.html#text
+#   set new text position: event_tags[3].attributes.attributes[:position][] = (266.0, 13400)
+#   use lower_bound[] .< evts_df[:,:latency]-lower_bound[] .< upper_bound[] for text
 #
 # OPTIONAL
 # - add channel scroll
+

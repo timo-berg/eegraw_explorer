@@ -188,7 +188,7 @@ end
 
 # Color channel on click
 on(events(fig).mousebutton) do event
-    if event.action == Mouse.press
+    if event.action == Mouse.press && event.button == Mouse.left
         mouse_pos = events(fig).mouseposition[]
         mark_plot = Makie.pick(axis.scene, mouse_pos, 500)[1]
         if mark_plot in channel_plots
@@ -222,16 +222,36 @@ reject_plots = []
 on(rect) do new_rect
     start_idx = deepcopy(new_rect.origin[1]+max(1, slider_time[]-nsample_to_show_obs[]/2))
     end_idx = deepcopy(start_idx + new_rect.widths[1])
-    append!(reject_limits, [[start_idx, end_idx]])
-    
-    plot_start = @lift(max(0, start_idx-$lower_bound))
-    plot_end = @lift(min(end_idx - $lower_bound, $upper_bound))
-    y_lim = @lift([$(axis.finallimits).origin[2], $(axis.finallimits).widths[2]])
-    y_height = @lift(abs($y_lim[1]-$y_lim[2]))
-    draw_rect = @lift(FRect($plot_start, $y_lim[1], abs($plot_end-$plot_start), $y_height))
-    append!(reject_plots, [draw_reject_region(draw_rect)])
-    println(plot_start[])
-    println(draw_rect[])
+    overlaps = false
+    for limit in reject_limits
+        if limit[1] < start_idx < limit[2] || limit[1] < end_idx < limit[2]
+            overlaps = true
+        end
+    end
+    if !overlaps
+        append!(reject_limits, [[start_idx, end_idx]])
+        
+        plot_start = @lift(max(0, start_idx-$lower_bound))
+        plot_end = @lift(min(end_idx - $lower_bound, $upper_bound))
+        y_lim = @lift([$(axis.finallimits).origin[2], $(axis.finallimits).widths[2]])
+        y_height = @lift(abs($y_lim[1]-$y_lim[2]))
+        draw_rect = @lift(FRect($plot_start, $y_lim[1], abs($plot_end-$plot_start), $y_height))
+        append!(reject_plots, [draw_reject_region(draw_rect)])
+    end
+end
+
+# Delete time window on right click
+on(events(fig).mousebutton) do event
+    if event.button == Mouse.right && event.action == Mouse.press
+        mp_x = mouseposition(axis.scene)[1]
+        for (region_idx, limit) in enumerate(reject_limits)
+            if limit[1] < mp_x+max(1, slider_time[]-nsample_to_show_obs[]/2) < limit[2]
+                deleteat!(reject_limits, region_idx)
+                delete!(axis, reject_plots[region_idx])
+                deleteat!(reject_plots, region_idx)
+            end
+        end
+    end
 end
 
 # No left/right margin
@@ -243,8 +263,6 @@ fig
 ##
 
 # TODO
-# - delete reject region on right click
-# - prevent creation of overlapping reject vis_regions
 # - add event tags http://makie.juliaplots.org/stable/plotting_functions/text.html#text
 #
 # OPTIONAL

@@ -153,11 +153,12 @@ upper_bound = @lift(min(nsamples, $lower_bound+Int($nsample_to_show_obs)))
 range = @lift([$lower_bound,$upper_bound])
 
 # Plot EEG
+channel_plots = []
 for chan in 1:nchan
     data_chunk = @lift(data[chan,$range[1]:$range[2]])
     chunk_mean = @lift(mean($data_chunk))
     data_chunk_plot = @lift($data_chunk .+ (-$chunk_mean + chan*offset) .* scale)
-    lines!(axis, data_chunk_plot, color = :grey0)
+    append!(channel_plots, [lines!(axis, data_chunk_plot, color = :grey0)])
 end
 
 # Plot events
@@ -190,7 +191,7 @@ on(events(fig).mousebutton) do event
     if event.action == Mouse.press
         mouse_pos = events(fig).mouseposition[]
         mark_plot = Makie.pick(axis.scene, mouse_pos, 500)[1]
-        if typeof(mark_plot) == Lines{Tuple{Vector{Point{2, Float32}}}}
+        if mark_plot in channel_plots
             if mark_plot.attributes.color[] == :red
                 mark_plot.attributes.color = :grey0
             else
@@ -201,6 +202,18 @@ on(events(fig).mousebutton) do event
     return Consume(false)
 end
 
+# Keyboard scroll 
+on(events(fig).keyboardbutton) do event
+    if event.action in (Keyboard.press, Keyboard.repeat)
+        if event.key == Keyboard.left
+            slider_time[] = max(1, slider_time[]-100)
+        end
+        if event.key == Keyboard.right
+            slider_time[] = min(slider_time[]+100, nsamples-nsample_to_show)
+        end
+    end
+    return Consume(false)
+end
 
 # Mark time windows
 rect = select_rectangle(axis.scene)
@@ -233,7 +246,6 @@ fig
 # - delete reject region on right click
 # - prevent creation of overlapping reject vis_regions
 # - add event tags http://makie.juliaplots.org/stable/plotting_functions/text.html#text
-# - add scroll via arrow keys
 #
 # OPTIONAL
 # - add channel scroll

@@ -30,7 +30,7 @@ function update_time_ticks(axis, value)
     axis.xticks = (xtick_pos, ["$(x)s" for x in xtick_pos_label])
 end
 
-function redraw_events(lines, tags)
+function redraw_event_markers(lines)
     # Draw new events and store them in event array
     vis_events = lower_bound[] .< evts_df[:,:latency] .< upper_bound[]
     for (event_idx, event) in enumerate(lines[vis_events])
@@ -40,6 +40,20 @@ function redraw_events(lines, tags)
     for (event_idx, event) in enumerate(lines[.!vis_events])
         event.visible = false
         tags[event_idx].visible = false
+    end
+end
+
+function redraw_event_text(tags)
+    vis_events = lower_bound[] .< evts_df[:,:latency] .< upper_bound[]
+    for (tag_idx, tag) in enumerate(tags[vis_events])
+        # index of tag in unfiltered array
+        idx_unfiltered = findfirst((x)-> x==tag, event_tags)
+        corrected_lat = evts_df[idx_unfiltered,:latency] - lower_bound[]
+        tag.attributes.attributes[:position][] = (corrected_lat, tag_height)
+        tag.visible = true
+    end
+    for (tag_idx, tag) in enumerate(tags[.!vis_events])
+        tag.visible = false
     end
 end
 
@@ -144,6 +158,11 @@ axis.ypanlock = true
 axis.xrectzoom = false
 axis.yrectzoom = false
 
+tag_height = (nchan+5)*offset*scale
+plot_high = (nchan+10)*offset*scale
+plot_low = -offset*scale
+event_upper_lim = tag_height/plot_high-0.01
+
 # Set up slider
 slider = Slider(fig[2, 1], range = 1:1:nsamples-nsample_to_show, startvalue = 1)
 slider_time = slider.value
@@ -166,14 +185,15 @@ end
 # Plot events
 event_plots = map(eachrow(evts_df)) do event
     plot_pos = @lift(event.latency-$lower_bound)
-    vlines!(axis, plot_pos, visible = false)
+    vlines!(axis, plot_pos, ymax=event_upper_lim, visible = false)
 end
 event_tags = map(eachrow(evts_df)) do event
     plot_pos = @lift(event.latency-$lower_bound)
-    text!(axis.scene, event.type, position=(plot_pos,(nchan+5)*offset*scale), align=(:center, :center), visible=false)
+    text!(axis.scene, event.type, position=(plot_pos,tag_height), align=(:center, :center), visible=false)
 end
 on(range) do value
-    redraw_events(event_plots, event_tags)
+    redraw_events(event_plots)
+    redraw_event_text(event_tags)
     redraw_reject_regions(reject_limits, reject_plots)
 end
 
@@ -262,7 +282,7 @@ end
 
 # No left/right margin
 tightlimits!(axis, Left(), Right())
-ylims!(-offset*scale, (10+nchan)*offset*scale)
+ylims!(plot_low, plot_high)
 
 set_window_config!(focus_on_show = true)
 fig

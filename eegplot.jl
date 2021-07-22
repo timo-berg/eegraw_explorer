@@ -6,7 +6,7 @@ include("load_eeglab.jl")
 ##
 
 data,srate,evts_df,chanlocs_df,EEG = import_eeglab("sub35_preprocessed.set")
-
+real_data = deepcopy(data)
 
 
 ##
@@ -14,23 +14,22 @@ data,srate,evts_df,chanlocs_df,EEG = import_eeglab("sub35_preprocessed.set")
 nchan = size(data,1)
 nsamples = size(data,2)
 
-real_data = deepcopy(data)
+
 test_data = zeros((nchan,nsamples))
 for i in StepRange(1, Int(srate/10) , nsamples)
     test_data[:,i] = ones((1,nchan))
 end
-data = test_data
+data = real_data
 
 chanlabels = chanlocs_df[:, :labels]
 
 # Parameters to set
-scale = 1
 offset = 5
 nsample_to_show = 1000 # only for initial plotting
 
-tag_height = (nchan+5)*offset*scale
-plot_high = (nchan+10)*offset*scale
-plot_low = -offset*scale
+tag_height = (nchan+5)*offset
+plot_high = (nchan+10)*offset
+plot_low = -offset
 event_upper_lim = tag_height/plot_high-0.01
 
 ##
@@ -261,6 +260,8 @@ function delete_reject_region(position)
         end
     end
 end
+
+
 ##
 
 # Set up figure
@@ -280,6 +281,10 @@ lower_bound = @lift(max(1, Int($slider_time)-Int($nsample_to_show_obs/2)))
 upper_bound = @lift(min(nsamples, $lower_bound+Int($nsample_to_show_obs)))
 range = @lift([$lower_bound,$upper_bound])
 
+# Scale Observables
+scale_obs = Node(0.4)
+amp_scalable = Node(false)
+
 # Plot EEG
 channel_plots = []
 for chan in 1:nchan
@@ -287,7 +292,7 @@ for chan in 1:nchan
     data_chunk = @lift(data[chan,$range[1]:$range[2]])
     chunk_mean = @lift(mean($data_chunk))
     # Mean center, scale and shift to plot all channels above each other in y-direction
-    data_chunk_plot = @lift((($data_chunk .-$chunk_mean)  .* scale) .+ chan*offset)
+    data_chunk_plot = @lift((($data_chunk .-$chunk_mean)  .* $scale_obs) .+ chan*offset)
     append!(channel_plots, [lines!(axis, data_chunk_plot, color = :grey0)])
 end
 
@@ -315,10 +320,23 @@ axis.yticks = (offset:offset:(nchan)*offset, chanlabels)
 axis.yticklabelsize = 10.0
 set_time_ticks(axis, 0)
 
-# Scrolling zoom
+# Scrolling time/amplitude-zoom
 on(events(fig).scroll, priority = 100) do scroll
-    nsample_to_show_obs[] = clamp(nsample_to_show_obs[]-scroll[2]*30, 150, nsamples)
-    xlims!(0,nsample_to_show_obs[])
+    if amp_scalable[]
+        scale_obs[] = max(0, scale_obs[] + 0.01*scroll[2])
+    else
+        nsample_to_show_obs[] = clamp(nsample_to_show_obs[]-scroll[2]*30, 150, nsamples)
+        xlims!(0,nsample_to_show_obs[])
+    end
+end
+
+# Enable amplitude-zoom on left-ctrl hold
+on(events(fig).keyboardbutton) do event
+    if event.key == Keyboard.left_control && event.action in (Keyboard.repeat, Keyboard.press)
+        amp_scalable[] = true
+    else
+        amp_scalable[] = false
+    end
 end
 
 # Color channel on click
@@ -359,6 +377,8 @@ on(events(fig).mousebutton) do event
     end
 end
 
+
+
 # Set visible limits (doesn't affect plotted data)
 tightlimits!(axis, Left(), Right()) # No left/right margin
 ylims!(plot_low, plot_high)
@@ -369,7 +389,6 @@ fig
 # TODO
 # - menu
 #   - load data
-# - scale on ctrl-hold
 # - plot title is filename
 #
 # OPTIONAL

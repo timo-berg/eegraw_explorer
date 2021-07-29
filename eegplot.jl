@@ -3,34 +3,24 @@ using GLMakie
 using Statistics
 using Colors
 include("load_eeglab.jl")
-##
 
-data,srate,evts_df,chanlocs_df,EEG = import_eeglab("sub35_preprocessed.set")
+
+data,srate,event_df,chanlocs_df,EEG = import_eeglab("sub35_preprocessed.set")
 real_data = deepcopy(data)
-
-
-##
-
-nchan = size(data,1)
-nsamples = size(data,2)
-
-
-test_data = zeros((nchan,nsamples))
-for i in StepRange(1, Int(srate/10) , nsamples)
-    test_data[:,i] = ones((1,nchan))
-end
-data = real_data
-
 chanlabels = chanlocs_df[:, :labels]
 
-# Parameters to set
-offset = 5
-nsample_to_show = 1000 # only for initial plotting
+##
 
-tag_height = (nchan+5)*offset
-plot_high = (nchan+10)*offset
-plot_low = -offset
-event_upper_lim = tag_height/plot_high-0.01
+
+# test_data = zeros((nchan,nsamples))
+# for i in StepRange(1, Int(srate/10) , nsamples)
+#     test_data[:,i] = ones((1,nchan))
+# end
+# data = real_data
+
+
+
+
 
 ##
 
@@ -52,15 +42,13 @@ Make events outside of this range invisible.
 """
 function redraw_event_markers(lines)
     # Check for visibility
-    vis_events = lower_bound[] .< evts_df[:,:latency] .< upper_bound[]
+    vis_events = lower_bound[] .< event_df[:,:latency] .< upper_bound[]
     
     for (event_idx, event) in enumerate(lines[vis_events])
         event.visible = true
-        tags[event_idx].visible = true
     end
     for (event_idx, event) in enumerate(lines[.!vis_events])
         event.visible = false
-        tags[event_idx].visible = false
     end
 end
 
@@ -70,12 +58,12 @@ Make events outside of this range invisible.
 """
 function redraw_event_text(tags)
     # Check for visibility
-    vis_events = lower_bound[] .< evts_df[:,:latency] .< upper_bound[]
+    vis_events = lower_bound[] .< event_df[:,:latency] .< upper_bound[]
     for tag in tags[vis_events]
         # Index of tag in unfiltered array
         idx_unfiltered = findfirst((x)-> x==tag, event_tags)
         # Observable position doesn't work for text -> manually update position
-        corrected_lat = evts_df[idx_unfiltered,:latency] - lower_bound[]
+        corrected_lat = event_df[idx_unfiltered,:latency] - lower_bound[]
         tag.attributes.attributes[:position][] = (corrected_lat, tag_height)
         tag.visible = true
     end
@@ -261,8 +249,34 @@ function delete_reject_region(position)
     end
 end
 
+"""
+Check if char can be parsed as an int.
+"""
+function is_float_char(c) 
+    try 
+        parse(Float64, c)
+        is_num = true
+    catch
+        is_num = false
+    end
+end
+
 
 ##
+
+# Data size
+nchan = size(data,1)
+nsamples = size(data,2)
+
+
+# Parameters to set
+offset = 5
+nsample_to_show = 1000 # only for initial plotting
+
+tag_height = (nchan+5)*offset
+plot_high = (nchan+10)*offset
+plot_low = -offset
+event_upper_lim = tag_height/plot_high-0.01
 
 # Set up figure
 fig = Figure(resolution = (2560, 1440))
@@ -272,8 +286,8 @@ axis = fig[1, 1] = Axis(fig, title = "EEG")
 disable_native_zoom(axis)
 
 # Set up time slider
-slider = Slider(fig[2, 1], range = 1:1:nsamples-nsample_to_show, startvalue = 1)
-slider_time = slider.value
+time_slider = Slider(fig[2, 1], range = 1:1:nsamples-nsample_to_show, startvalue = 1)
+slider_time = time_slider.value
 
 # Time range to plot
 nsample_to_show_obs = Node(nsample_to_show)
@@ -297,19 +311,19 @@ for chan in 1:nchan
 end
 
 # Plot events as vertical lines
-event_plots = map(eachrow(evts_df)) do event
+event_plots = map(eachrow(event_df)) do event
     plot_pos = @lift(event.latency-$lower_bound)
     vlines!(axis, plot_pos, ymax=event_upper_lim, visible = false, color = :steelblue1)
 end
 # Plot event tag above event line
-event_tags = map(eachrow(evts_df)) do event
+event_tags = map(eachrow(event_df)) do event
     plot_pos = @lift(event.latency-$lower_bound)
     text!(axis.scene, event.type, position=(plot_pos,tag_height), align=(:center, :center), visible=false)
 end
 
 # Plot range changes (i.e. zoom or scroll)
 on(range) do value
-    redraw_events(event_plots)
+    redraw_event_markers(event_plots)
     redraw_event_text(event_tags)
     redraw_reject_regions(reject_limits, reject_plots)
     set_time_ticks(axis, lower_bound[])
@@ -326,7 +340,6 @@ on(events(fig).scroll, priority = 100) do scroll
         scale_obs[] = max(0, scale_obs[] + 0.01*scroll[2])
     else
         nsample_to_show_obs[] = clamp(nsample_to_show_obs[]-scroll[2]*30, 150, nsamples)
-        xlims!(0,nsample_to_show_obs[])
     end
 end
 
@@ -379,19 +392,51 @@ end
 
 
 
+# Channel scroll
+channel_slider = Slider(fig[1, 2], range = 1:1:nchan, startvalue = 1, horizontal = false)
+slider_channel = channel_slider.value
+
+# Time input
+time_input = Textbox(fig[2, 2], width = 100, restriction=is_float_char, placeholder=string(nsample_to_show_obs[]))
+time_value = time_input.stored_string
+
+
+on(time_value) do time_range
+    nsample_to_show_obs[] = parse(Float64, time_range) * srate
+end
+
+on(nsample_to_show_obs) do nsample
+    xlims!(0,nsample)
+end
+
 # Set visible limits (doesn't affect plotted data)
 tightlimits!(axis, Left(), Right()) # No left/right margin
 ylims!(plot_low, plot_high)
 
 fig
+
 ##
 
+# PROBLEMS
+# - can't restrict on float input
+# - make sure that nsample to display 
+#   doesn't exceed data bounds and scroll when end is reached
+
+
 # TODO
-# - menu
-#   - load data
+# - refactor as a function that can be called with data, chanlabels and kwargs
+#   - function should return rejection information
 # - plot title is filename
+# - show amplitude scale
+# - explicit time-zoom
+# - channel scroll!
+# - color block event duration
+# - read in reject stuff
+
+
 #
 # OPTIONAL
 # - add channel scroll
 # - show mini plot under time-scroll that visualizes position and zoom level
 
+# - 

@@ -393,20 +393,22 @@ end
 
 
 # Channel scroll
-channel_slider = Slider(fig[1, 2], range = 1:1:nchan, startvalue = 1, horizontal = false)
-slider_channel = channel_slider.value
+channel_slider = IntervalSlider(fig[1, 2], range = 1:1:nchan, startvalues = (1,nchan), horizontal = false)
+slider_channel = channel_slider.interval
 
 # Time input
-time_input = Textbox(fig[2, 2], width = 100, restriction=is_float_char, placeholder=string(nsample_to_show_obs[]))
+time_input = Textbox(fig[2, 2], width = 100, validator = Float64, placeholder=string(nsample_to_show_obs[]/srate))
 time_value = time_input.stored_string
 
 
 on(time_value) do time_range
-    nsample_to_show_obs[] = parse(Float64, time_range) * srate
+    new_range = min(parse(Float64, time_range), nsamples/srate)
+    nsample_to_show_obs[] = floor(Int, new_range * srate)
 end
 
 on(nsample_to_show_obs) do nsample
     xlims!(0,nsample)
+    time_input.displayed_string = string(nsample/srate)
 end
 
 # Set visible limits (doesn't affect plotted data)
@@ -418,7 +420,6 @@ fig
 ##
 
 # PROBLEMS
-# - can't restrict on float input
 # - make sure that nsample to display 
 #   doesn't exceed data bounds and scroll when end is reached
 
@@ -428,7 +429,6 @@ fig
 #   - function should return rejection information
 # - plot title is filename
 # - show amplitude scale
-# - explicit time-zoom
 # - channel scroll!
 # - color block event duration
 # - read in reject stuff

@@ -250,15 +250,27 @@ function delete_reject_region(position)
 end
 
 """
-Check if char can be parsed as an int.
+Make channels in mask visible and channels not in it invisible.
 """
-function is_float_char(c) 
-    try 
-        parse(Float64, c)
-        is_num = true
-    catch
-        is_num = false
+function toggle_channel_visibility(channel_plots, mask)
+    for (plot_idx, plot) in enumerate(channel_plots)
+        if plot_idx in mask
+            plot.visible = true
+        else
+            plot.visible = false
+        end 
     end
+end
+
+"""
+Find index of element in array. If element is not in array, return 0.
+"""
+function findfirst_zero(element, array)
+    idx = findfirst(x-> x==element, array)
+    if isnothing(idx)
+        idx = 0
+    end
+    idx
 end
 
 
@@ -271,6 +283,7 @@ nsamples = size(data,2)
 
 # Parameters to set
 offset = 5
+y_estate = offset*nchan
 nsample_to_show = 1000 # only for initial plotting
 
 tag_height = (nchan+5)*offset
@@ -289,6 +302,10 @@ disable_native_zoom(axis)
 time_slider = Slider(fig[2, 1], range = 1:1:nsamples-nsample_to_show, startvalue = 1)
 slider_time = time_slider.value
 
+# Channel scroll
+channel_slider = IntervalSlider(fig[1, 2], range = 1:1:nchan, startvalues = (1,nchan), horizontal = false)
+channel_interval = channel_slider.interval
+
 # Time range to plot
 nsample_to_show_obs = Node(nsample_to_show)
 lower_bound = @lift(max(1, Int($slider_time)-Int($nsample_to_show_obs/2)))
@@ -299,14 +316,18 @@ range = @lift([$lower_bound,$upper_bound])
 scale_obs = Node(0.4)
 amp_scalable = Node(false)
 
+# Channel Observables
+offset_obs = Node(offset)
+
 # Plot EEG
 channel_plots = []
 for chan in 1:nchan
     # Get data chunk currently to be plottet
     data_chunk = @lift(data[chan,$range[1]:$range[2]])
     chunk_mean = @lift(mean($data_chunk))
+    chan_pos = @lift(findfirst_zero(chan, ($channel_interval[1]:$channel_interval[2])))
     # Mean center, scale and shift to plot all channels above each other in y-direction
-    data_chunk_plot = @lift((($data_chunk .-$chunk_mean)  .* $scale_obs) .+ chan*offset)
+    data_chunk_plot = @lift((($data_chunk .-$chunk_mean)  .* $scale_obs) .+ $chan_pos*$offset_obs)
     append!(channel_plots, [lines!(axis, data_chunk_plot, color = :grey0)])
 end
 
@@ -392,9 +413,7 @@ end
 
 
 
-# Channel scroll
-channel_slider = IntervalSlider(fig[1, 2], range = 1:1:nchan, startvalues = (1,nchan), horizontal = false)
-slider_channel = channel_slider.interval
+
 
 # Time input
 time_input = Textbox(fig[2, 2], width = 100, validator = Float64, placeholder=string(nsample_to_show_obs[]/srate))
@@ -409,6 +428,11 @@ end
 on(nsample_to_show_obs) do nsample
     xlims!(0,nsample)
     time_input.displayed_string = string(nsample/srate)
+end
+
+on(channel_interval) do interval
+    toggle_channel_visibility(channel_plots, (interval[1]:interval[2]))
+    offset_obs[] = round(Int, y_estate/(interval[2]-interval[1]))
 end
 
 # Set visible limits (doesn't affect plotted data)

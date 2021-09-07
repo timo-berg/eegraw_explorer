@@ -13,6 +13,9 @@ function import_eeglab(filename)
         return DataFrame(map(x->dropdims(x,dims=1),values(s)),collect(keys(s)))
     end
 
+    if "EEG" in keys(EEG)
+        EEG = EEG["EEG"]
+    end
     evts_df = parse_struct(EEG["event"])
     chanlocs_df = parse_struct(EEG["chanlocs"])
     

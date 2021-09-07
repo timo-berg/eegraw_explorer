@@ -20,16 +20,6 @@ chanlabels = chanlocs_df[:, :labels]
 ##
 
 
-# test_data = zeros((nchan,nsamples))
-# for i in StepRange(1, Int(srate/10) , nsamples)
-#     test_data[:,i] = ones((1,nchan))
-# end
-# data = real_data
-
-
-
-
-
 ##
 
 """
@@ -304,7 +294,7 @@ nchan = size(data,1)
 nsamples = size(data,2)
 
 # Parameters to set
-offset = 5
+offset = 5.0
 y_estate = offset*nchan
 nsample_to_show = 1000 # only for initial plotting
 
@@ -460,14 +450,19 @@ on(time_value) do time_range
     nsample_to_show_obs[] = round_int(new_range * srate)
 end
 
+# Update time zoom variables
 on(nsample_to_show_obs) do nsample
     xlims!(0,nsample)
     time_input.displayed_string = string(nsample/srate)
 end
 
+# Channel scroll
 on(channel_interval) do interval
     toggle_channel_visibility(channel_plots, (interval[1]:interval[2]))
-    offset_obs[] = round_int(y_estate/(interval[2]-interval[1]))
+    offset_obs[] = y_estate/(interval[2]-interval[1]+1)
+    new_nchan = interval[2]-interval[1]+1
+    new_chanlabels = chanlabels[interval[1]:interval[2]]
+    axis.yticks = (offset_obs[]:offset_obs[]:(new_nchan)*offset_obs[], new_chanlabels)
 end
 
 # Set visible limits (doesn't affect plotted data)
@@ -498,4 +493,3 @@ fig
 # - add channel scroll
 # - show mini plot under time-scroll that visualizes position and zoom level
 
-# - 

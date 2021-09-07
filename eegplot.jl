@@ -3,10 +3,18 @@ using GLMakie
 using Statistics
 using Colors
 include("load_eeglab.jl")
+##
 
+subject = 1
 
-data,srate,event_df,chanlocs_df,EEG = import_eeglab("sub35_preprocessed.set")
-real_data = deepcopy(data)
+path = "/Users/timotheusberg/Documents/Work/BPN/triangle_walking/04_data/3_EEG-preprocessing/s$subject/"
+
+input_file = "s$(subject)_preprocessed.set"
+
+output_file = "s$(subject)_reject.txt"
+
+data,srate,event_df,chanlocs_df,EEG = import_eeglab(path * input_file)
+#real_data = deepcopy(data)
 chanlabels = chanlocs_df[:, :labels]
 
 ##
@@ -30,7 +38,7 @@ time_idx should be the lower bound of the plotted data.
 """
 function set_time_ticks(axis, time_idx)
     plot_range = upper_bound[] - lower_bound[]
-    xtick_pos = LinRange(Int(plot_range*0.1),Int(plot_range*0.9), 10)
+    xtick_pos = LinRange(round(plot_range*0.1),round_int(plot_range*0.9), 10)
     # Convert x_pos to time
     xtick_pos_label = map(x->round((time_idx + x)/srate, digits=2), xtick_pos)
     axis.xticks = (xtick_pos, ["$(x)s" for x in xtick_pos_label])
@@ -200,6 +208,7 @@ If channel is marked already, unmark it.
 function mark_channel(axis, mouse_pos)
     mark_plot = Makie.pick(axis.scene, mouse_pos, 500)[1]
     # Lineplot is an actual EEG plot
+
     if mark_plot in channel_plots
         # If marked, unmark it
         if mark_plot.attributes.color[] == :red
@@ -208,6 +217,8 @@ function mark_channel(axis, mouse_pos)
             mark_plot.attributes.color = :red
         end
     end
+
+    findall(x -> x==mark_plot, channel_plots)
 end
 
 """
@@ -273,13 +284,24 @@ function findfirst_zero(element, array)
     idx
 end
 
+"""
+Round number to neares Integer.
+"""
+function round_int(x)
+    round(Int, x)
+end
+
+
 
 ##
+
+# Output file
+io = open(path * output_file, "w")
+reject_chans = []
 
 # Data size
 nchan = size(data,1)
 nsamples = size(data,2)
-
 
 # Parameters to set
 offset = 5
@@ -308,8 +330,8 @@ channel_interval = channel_slider.interval
 
 # Time range to plot
 nsample_to_show_obs = Node(nsample_to_show)
-lower_bound = @lift(max(1, Int($slider_time)-Int($nsample_to_show_obs/2)))
-upper_bound = @lift(min(nsamples, $lower_bound+Int($nsample_to_show_obs)))
+lower_bound = @lift(max(1, round_int($slider_time)-round_int($nsample_to_show_obs/2)))
+upper_bound = @lift(min(nsamples, $lower_bound+round_int($nsample_to_show_obs)))
 range = @lift([$lower_bound,$upper_bound])
 
 # Scale Observables
@@ -360,7 +382,7 @@ on(events(fig).scroll, priority = 100) do scroll
     if amp_scalable[]
         scale_obs[] = max(0, scale_obs[] + 0.01*scroll[2])
     else
-        nsample_to_show_obs[] = clamp(nsample_to_show_obs[]-scroll[2]*30, 150, nsamples)
+        nsample_to_show_obs[] = clamp(nsample_to_show_obs[]-floor(scroll[2]*30), 150, nsamples)
     end
 end
 
@@ -377,19 +399,35 @@ end
 on(events(fig).mousebutton) do event
     if event.action == Mouse.press && event.button == Mouse.left
         mouse_pos = events(fig).mouseposition[]
-        mark_channel(axis, mouse_pos)
+        channel_id = mark_channel(axis, mouse_pos)
+        if !isempty(channel_id) 
+            if !(channel_id[1] in reject_chans)
+                append!(reject_chans, channel_id[1])
+            else
+                deleteat!(reject_chans, findall(x->x==channel_id[1], reject_chans))
+            end
+        end
     end
     return Consume(false)
 end
 
-# Time-scroll on left/right arrow key
+
 on(events(fig).keyboardbutton) do event
     if event.action in (Keyboard.press, Keyboard.repeat)
+        # Time-scroll on left/right arrow key
         if event.key == Keyboard.left
             slider_time[] = max(1, slider_time[]-100)
         end
         if event.key == Keyboard.right
             slider_time[] = min(slider_time[]+100, nsamples-nsample_to_show)
+        end
+
+        # Close file
+        if event.key == Keyboard.p
+            for chan_id in reject_chans
+                println(io, chan_id)
+            end
+            close(io)
         end
     end
     return Consume(false)
@@ -412,9 +450,6 @@ on(events(fig).mousebutton) do event
 end
 
 
-
-
-
 # Time input
 time_input = Textbox(fig[2, 2], width = 100, validator = Float64, placeholder=string(nsample_to_show_obs[]/srate))
 time_value = time_input.stored_string
@@ -422,7 +457,7 @@ time_value = time_input.stored_string
 
 on(time_value) do time_range
     new_range = min(parse(Float64, time_range), nsamples/srate)
-    nsample_to_show_obs[] = floor(Int, new_range * srate)
+    nsample_to_show_obs[] = round_int(new_range * srate)
 end
 
 on(nsample_to_show_obs) do nsample
@@ -432,7 +467,7 @@ end
 
 on(channel_interval) do interval
     toggle_channel_visibility(channel_plots, (interval[1]:interval[2]))
-    offset_obs[] = round(Int, y_estate/(interval[2]-interval[1]))
+    offset_obs[] = round_int(y_estate/(interval[2]-interval[1]))
 end
 
 # Set visible limits (doesn't affect plotted data)

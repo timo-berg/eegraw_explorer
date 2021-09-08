@@ -437,15 +437,15 @@ on(events(fig).mousebutton) do event
     return Consume(false)
 end
 
-
+# Keyboard input
 on(events(fig).keyboardbutton) do event
     if event.action in (Keyboard.press, Keyboard.repeat)
         # Time-scroll on left/right arrow key
         if event.key == Keyboard.left
-            slider_time[] = max(1, slider_time[]-100)
+            set_close_to!(time_slider, max(1, slider_time[]-100))
         end
         if event.key == Keyboard.right
-            slider_time[] = min(slider_time[]+100, nsamples-nsample_to_show)
+            set_close_to!(time_slider, min(slider_time[]+100, nsamples-nsample_to_show))
         end
 
         # Close file
@@ -501,6 +501,8 @@ on(channel_interval) do interval
     axis.yticks = (offset_obs[]:offset_obs[]:(new_nchan)*offset_obs[], new_chanlabels)
 end
 
+
+
 # Set visible limits (doesn't affect plotted data)
 tightlimits!(axis, Left(), Right()) # No left/right margin
 ylims!(plot_low, plot_high)
@@ -519,11 +521,9 @@ fig
 #   - function should return rejection information
 # - show amplitude scale
 # - read in reject stuff
-# - update time slider on button scroll
 
 
 #
 # OPTIONAL
-# - add channel scroll
 # - show mini plot under time-scroll that visualizes position and zoom level
 

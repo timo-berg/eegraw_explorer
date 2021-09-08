@@ -386,7 +386,7 @@ end
 # Plot event tag above event line
 event_tags = map(eachrow(event_df)) do event
     plot_pos = @lift(event.latency-$lower_bound)
-    text!(axis.scene, event.type, position=(plot_pos,tag_height), align=(:center, :center), visible=false)
+    text!(axis.scene, event.event, position=(plot_pos,tag_height), align=(:center, :center), visible=false)
 end
 
 # Plot range changes (i.e. zoom or scroll)
@@ -519,7 +519,6 @@ fig
 #   - function should return rejection information
 # - plot title is filename
 # - show amplitude scale
-# - color block event duration
 # - read in reject stuff
 
 

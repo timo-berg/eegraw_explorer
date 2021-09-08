@@ -2,6 +2,7 @@ using Base: func_for_method_checked, structdiff, Const
 using GLMakie
 using Statistics
 using Colors
+using Distributions
 include("load_eeglab.jl")
 ##
 
@@ -17,6 +18,8 @@ data,srate,event_df,chanlocs_df,EEG = import_eeglab(path * input_file)
 #real_data = deepcopy(data)
 chanlabels = chanlocs_df[:, :labels]
 
+# TESTING
+event_df[!, "duration"] = rand(Uniform(0.0, 2.0), 2512)
 ##
 
 
@@ -281,7 +284,27 @@ function round_int(x)
     round(Int, x)
 end
 
+"""
+Check what event regions are in the current plot range and make them visible.
+Make event regions outside of this range invisible.
+"""
+function redraw_event_regions(events, plots)
+    # Create dataframe with lower and upper bounds of the regions
+    # limits_df = DataFrame( lower=[], upper=[])
+    # for event in events
+    #     push!(limits_df, region)
+    # end
+    # Check what regions are visible
+    vis_regions = ((lower_bound[] .< events[:,:latency] .< upper_bound[])
+                .| (lower_bound[] .< events[:,:latency] + events[:,:duration] .< upper_bound[]))
 
+    for region in plots[vis_regions]
+        region.visible = true
+    end
+    for region in plots[.!vis_regions]
+        region.visible = false
+    end
+end
 
 ##
 
@@ -344,10 +367,22 @@ for chan in 1:nchan
 end
 
 # Plot events as vertical lines
-event_plots = map(eachrow(event_df)) do event
+event_lines = map(eachrow(event_df)) do event
     plot_pos = @lift(event.latency-$lower_bound)
     vlines!(axis, plot_pos, ymax=event_upper_lim, visible = false, color = :steelblue1)
 end
+
+# event_regions = map(eachrow(event_df)) do event
+#     plot_start = @lift(event.latency-$lower_bound)
+#     plot_end = @lift(min(event.latency + event.duration - $lower_bound, $upper_bound))
+#     y_lim = @lift([$(axis.finallimits).origin[2], $(axis.finallimits).widths[2]])
+#     y_height = @lift(abs($y_lim[1]-$y_lim[2]))
+#     draw_rect = @lift(FRect($plot_start, $y_lim[1], abs($plot_end-$plot_start), $y_height))
+
+#     poly!(axis, draw_rect, raw = true, visible = false, color = :steelblue1, strokewidth = 0)
+# end
+
+
 # Plot event tag above event line
 event_tags = map(eachrow(event_df)) do event
     plot_pos = @lift(event.latency-$lower_bound)
@@ -356,9 +391,10 @@ end
 
 # Plot range changes (i.e. zoom or scroll)
 on(range) do value
-    redraw_event_markers(event_plots)
+    redraw_event_markers(event_lines)
     redraw_event_text(event_tags)
     redraw_reject_regions(reject_limits, reject_plots)
+    # redraw_event_regions(event_df, event_regions)
     set_time_ticks(axis, lower_bound[])
 end
 
@@ -483,7 +519,6 @@ fig
 #   - function should return rejection information
 # - plot title is filename
 # - show amplitude scale
-# - channel scroll!
 # - color block event duration
 # - read in reject stuff
 

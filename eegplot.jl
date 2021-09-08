@@ -6,7 +6,7 @@ using Distributions
 include("load_eeglab.jl")
 ##
 
-subject = 1
+subject = 2
 
 path = "/Users/timotheusberg/Documents/Work/BPN/triangle_walking/04_data/3_EEG-preprocessing/s$subject/"
 
@@ -19,7 +19,7 @@ data,srate,event_df,chanlocs_df,EEG = import_eeglab(path * input_file)
 chanlabels = chanlocs_df[:, :labels]
 
 # TESTING
-event_df[!, "duration"] = rand(Uniform(0.0, 2.0), 2512)
+#event_df[!, "duration"] = rand(Uniform(0.0, 2.0), 2512)
 ##
 
 
@@ -328,7 +328,7 @@ event_upper_lim = tag_height/plot_high-0.01
 
 # Set up figure
 fig = Figure(resolution = (2560, 1440))
-axis = fig[1, 1] = Axis(fig, title = "EEG")
+axis = fig[1, 1] = Axis(fig, title = input_file)
 
 # disable native zoom
 disable_native_zoom(axis)
@@ -517,9 +517,9 @@ fig
 # TODO
 # - refactor as a function that can be called with data, chanlabels and kwargs
 #   - function should return rejection information
-# - plot title is filename
 # - show amplitude scale
 # - read in reject stuff
+# - update time slider on button scroll
 
 
 #

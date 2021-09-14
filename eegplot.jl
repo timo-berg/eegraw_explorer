@@ -300,7 +300,12 @@ function redraw_event_regions(events, plots, lower_bound, upper_bound)
     end
 end
 
-
+"""
+Control a reasonable scale bar size.
+"""
+function get_scale_factor(scale)
+    1/round(scale; digits=1)
+end
 
 
 """
@@ -523,6 +528,20 @@ function data_plot(data,srate,event_df,chanlabels,title, path_to_output, output_
     tightlimits!(axis, Left(), Right()) # No left/right margin
     ylims!(plot_low, plot_high)
 
+    # Scalebar
+    scale_x_pos = @lift([round_int($nsample_to_show_obs*0.98)])
+    scale_y_pos = [round_int((plot_low + plot_high)/2)]
+    scale_size = @lift($scale_obs*100/2) # Divide by 2 because it extends in both directions
+    errorbars!(scale_x_pos, scale_y_pos, scale_size, color = :red, linewidth = 3, whiskerwidth = 10)
+
+    # Scalelabel
+    label_pos = @lift(($scale_x_pos[1], scale_y_pos[1]))
+    label_offset = @lift((-round_int($nsample_to_show_obs*0.02), 0))
+    label_text = string(100) * " μV"
+
+    text!(axis.scene, label_text, position = label_pos, color = :red, align=(:right, :center), offset = (-30, 0))
+
+
     fig
 end
 ##
@@ -538,11 +557,17 @@ output_file = "s$(subject)_reject.txt"
 
 data,srate,event_df,chanlocs_df,EEG = import_eeglab(path * input_file)
 
+# Test data
+time = 1:5000
+sin_time = sin.(time./10).*50
+test_data = repeat(transpose(sin_time), 128, 1)
+
 chanlabels = chanlocs_df[:, :labels]
 
 ##
 
-data_plot(data,srate,event_df,chanlabels,input_file,path, output_file)
+fig = data_plot(data,srate,event_df,chanlabels,input_file,path, output_file)
+
 ##
 # PROBLEMS
 # - make sure that nsample to display 
